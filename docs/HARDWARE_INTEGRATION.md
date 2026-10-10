@@ -1,0 +1,125 @@
+# PUNARVA — Hardware Integration Guide
+
+How the ESP32 prototype will feed measurements into this dashboard, what is
+already prepared on the software side, and what must exist before any physical
+actuation is even discussable.
+
+---
+
+## 1. Current status (honest)
+
+| Capability | Status |
+| --- | --- |
+| Dashboard ingest layer (validation, staleness, events) | ✅ Implemented |
+| Web Serial transport (Chrome/Edge/Opera desktop) | ✅ Implemented, unverified against real hardware |
+| Documented wire protocol | ✅ Implemented (see below) |
+| Demo data source (clearly labelled) | ✅ Implemented |
+| Validated ESP32 firmware producing this protocol | ❌ Not yet — under development |
+| Controlled-load actuation from software | ❌ **Deliberately absent** — see §6 |
+
+Until real firmware streams validated readings, the dashboard runs on demo data
+and says so everywhere.
+
+---
+
+## 2. Transport
+
+The dashboard supports **Web Serial** out of the box
+(`src/services/device/transports.ts`):
+
+- Baud: **115200**
+- Framing: **one JSON object per line** (`\n`-terminated, UTF-8)
+- Flow: user clicks *Connect device* → `navigator.serial.requestPort()` →
+  `port.open({ baudRate: 115200 })` → read loop splits lines → `JSON.parse` →
+  validation
+
+A future backend/WebSocket bridge only needs to implement the same
+`DeviceTransport` interface (`connect`, `disconnect`, `onRaw/onError/onClose`)
+and register it — no UI changes required.
+
+Error handling covered by the UI:
+
+| Condition | Behaviour |
+| --- | --- |
+| Browser without Web Serial | Connect disabled + explanatory notice (Settings, Overview, Battery Check) |
+| Port selection cancelled | Error event, status returns to disconnected |
+| Port busy / cannot open | Precise error text in Connection panel + event log |
+| Malformed line | Counted as rejected payload, `error` event, never displayed as data |
+| Stream ends unexpectedly | Status → disconnected with reason |
+| Stale readings (no fresh payload > 5 s) | "Last valid" timestamp stops refreshing; hardware pre-check fails |
+
+---
+
+## 3. Wire protocol
+
+One JSON object per line:
+
+```json
+{"voltage_v": 3.72, "current_a": 0.45, "temperature_c": 28.3, "timestamp": "2026-10-10T14:32:05.250Z"}
+```
+
+> The values above illustrate **structure only** — they are not real readings.
+
+Field rules enforced by `src/services/validation.ts`:
+
+| Field | Type | Plausible range |
+| --- | --- | --- |
+| `voltage_v` | finite number | −1 … 1000 |
+| `current_a` | finite number | −100 … 100 |
+| `temperature_c` | finite number | −50 … 200 |
+| `timestamp` | ISO-8601 string | optional — if missing/unparsable, reception time is used **and the payload is flagged** |
+
+Anything failing range/type checks is rejected loudly (event log + rejected
+counter) and never reaches a chart. A firmware sketch should therefore send
+exactly one line per sample, e.g.:
+
+```cpp
+// Pseudocode — not a validated firmware example
+Serial.print("{\"voltage_v\":");  Serial.print(adcToVolts(raw));
+Serial.print(",\"current_a\":");  Serial.print(shuntAmps(raw));
+Serial.print(",\"temperature_c\":"); Serial.print(sensorTemp());
+Serial.print(",\"timestamp\":\""); Serial.print(isoNow());
+Serial.println("\"}");
+```
+
+---
+
+## 4. Running a hardware test
+
+1. Flash firmware that streams the protocol above continuously (≥ 4 Hz).
+2. Open **Settings → Device connection → Connect device…**, pick the port.
+3. The top bar flips to **HARDWARE** and "last valid" starts ticking.
+4. On **Battery Check**, pre-checks now include: device connected, fresh
+   validated readings present, and zero rejected payloads.
+5. During the test the interface animates workflow state only — samples appear
+   strictly from received readings; ticks without fresh data stay empty and are
+   reported as missing. **No simulated value is ever mixed in.**
+
+---
+
+## 5. MicroSD data
+
+The planned on-device logging module writes its own files. The dashboard will
+**never** pretend browser storage and the card are the same thing:
+
+1. Export/convert the card's log to the dashboard CSV sample format (see
+   [CSV_FORMAT.md](CSV_FORMAT.md)).
+2. **Test History → Import CSV.** The file is strictly validated; invalid
+   structure produces a precise error.
+3. Imported records are labelled `IMPORTED` and clearly distinguished from demo
+   and hardware records.
+
+---
+
+## 6. Safety boundary — read this before wiring anything
+
+- The website **cannot** and **must not** actuate a physical load. There is no
+  write path in the transport, no actuation endpoint, and none will be added
+  until all of the following exist:
+  - validated firmware with a signed/acknowledged command protocol,
+  - hardware current limiting, fusing, and thermal protection,
+  - an electrical review of the load stage.
+- Until then, the only safe "test" is passive observation of a battery through
+  the sensing chain.
+- No secrets, API keys, or tokens belong in this frontend; the device layer
+  contains none and none may be added.

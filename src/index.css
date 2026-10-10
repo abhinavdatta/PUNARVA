@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --plum-bg: #24172f;
+    --plum-surface: #35233f;
+    --copper: #ff936b;
+    --teal: #63d8c2;
+    --ivory: #fff4eb;
+    --lavender: #c7b7cc;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-plum-900 text-ivory font-sans antialiased;
+    background-image:
+      radial-gradient(1100px 500px at 85% -5%, rgba(99, 216, 194, 0.07), transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, rgba(255, 147, 107, 0.08), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  /* Accessible focus states everywhere */
+  :focus-visible {
+    outline: 2px solid var(--copper);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: rgba(255, 147, 107, 0.35);
+    color: var(--ivory);
+  }
+
+  /* Scrollbars that match the theme */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(199, 183, 204, 0.25) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgba(199, 183, 204, 0.22);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+}
+
+@layer components {
+  /* Elevated plum panel used across the app */
+  .panel {
+    @apply rounded-xl border border-plum-600/60 bg-plum-700/70 shadow-panel backdrop-blur-sm;
+  }
+
+  .panel-elevated {
+    @apply rounded-xl border border-plum-500/60 bg-plum-800/80 shadow-panel;
+  }
+
+  /* Fine technical grid backdrop for hero/lab areas */
+  .tech-grid {
+    background-image: linear-gradient(rgba(199, 183, 204, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(199, 183, 204, 0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  .hairline {
+    @apply border-plum-600/70;
+  }
+
+  .label-caps {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-lavender/80;
+  }
+
+  .numeric {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Restrained glow for key accents */
+  .glow-copper {
+    box-shadow: 0 0 24px -8px rgba(255, 147, 107, 0.55);
+  }
+  .glow-teal {
+    box-shadow: 0 0 24px -8px rgba(99, 216, 194, 0.5);
+  }
+}
+
+/* Respect reduced motion globally; JS also reads the setting for 3D/animation */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
