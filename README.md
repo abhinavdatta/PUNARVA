@@ -43,6 +43,7 @@ npm install
 
 # 2. Run the development server
 npm run dev          # → http://localhost:5173
+#    (with arduino-cli on PATH, the Flash page's compile buttons just work)
 
 # 3. Production build & preview
 npm run build
@@ -51,10 +52,11 @@ npm run preview      # → http://localhost:4173
 
 | Script | What it does |
 | --- | --- |
-| `npm run dev` | Start the Vite dev server with hot reload |
+| `npm run dev` | Vite dev server with hot reload **+ embedded C++ compile bridge** |
 | `npm run build` | Type-check (`tsc -b`) **and** production build — CI-safe |
 | `npm run lint` | ESLint over the whole project |
 | `npm run preview` | Serve the production build locally |
+| `npm run smoke:md5` | Verify the flash-image MD5 helper against Node's crypto |
 
 ---
 
@@ -64,11 +66,12 @@ npm run preview      # → http://localhost:4173
 | --- | --- | --- |
 | `/` | **Overview** | WebGL hero: conceptual battery + PUNARVA tester with red/black test leads, live metric cards, response charts, recent tests, connection panel, system event log |
 | `/battery-check` | **Battery Check** | Full test workflow `IDLE → PRE-CHECKS → READY → TESTING → PROCESSING → RESULTS` (+ `DISCONNECTED`, `ERROR`), 15 s / 30 s / 60 s / 2 min durations, scanning-ring 3D animation, live charts |
-| `/results/:id` | **Test report** | Engineering report: min/max/avg statistics, response curves, completeness, data-quality warnings, CSV export |
-| `/history` | **Test History** | Search + filters, local persistence, per-record reports, CSV import/export, storage honesty banner |
+| `/results/:id` | **Test report** | Engineering report: min/max/avg statistics, response curves, completeness, data-quality warnings, CSV export, **reference comparison** (observed deltas vs. a chosen baseline — never a health verdict) |
+| `/history` | **Test History** | Search + filters (source, status, **date range**, **sort**), local persistence, per-record reports, CSV import/export, storage honesty banner |
 | `/technology` | **Technology** | Clickable signal-flow diagram, interactive 3D component assembly, per-component development status |
 | `/about` | **Project Information** | Problem, solution, 5-stage workflow, current vs. future development |
-| `/settings` | **Settings** | Web Serial device connection, payload protocol, motion preferences, storage management, browser support |
+| `/settings` | **Settings** | Device connection (Web Serial **or WebSocket bridge**), payload protocol, motion preferences, storage management, browser support |
+| `/flash` | **Flash Firmware** | Browser-based ESP32 flashing via esptool-js over Web Serial: .bin upload **or** one-click C++ compile (arduino-cli), board/offset/baud settings, progress stepper, live bootloader log, MD5 verification, auto-reset |
 
 ### Feature checklist
 
@@ -78,7 +81,11 @@ npm run preview      # → http://localhost:4173
 - 🧪 **A real test engine** — duplicate-start protection, complete timer cleanup, partial-data reports when stopped, deterministic 4 Hz sampling
 - 💾 **Persistent history** with graceful in-memory fallback when browser storage is unavailable
 - 📤 **CSV export & validated import** — exports contain the actual samples; imports are strictly validated with precise errors
-- 🔌 **Modular device layer** — Web Serial transport, strict payload validation, staleness/rejection handling, ready for a WebSocket bridge
+- 🔌 **Modular device layer** — Web Serial transport **+ WebSocket bridge transport** (same JSON-line protocol over ws://), strict payload validation, staleness/rejection handling
+- ⚡ **Flash firmware from the browser** — esptool-js over Web Serial: detect chip, write at the right offset, verify MD5, reset; no Python or esptool.py install needed
+- 🧑‍💻 **C++ → .bin in one click** — the Vite dev server embeds an arduino-cli compile bridge (`/__punarva/*`): compile the bundled `firmware/punarva_tester` protocol sketch **or any uploaded `.ino`/`.cpp`**, then flash the result
+- 📡 **Reference ESP32 firmware in C++** — `firmware/punarva_tester/punarva_tester.ino` streams the documented JSON measurement protocol (ADS1115, optional OLED/DS18B20/NTP); protocol-complete, awaiting hardware validation
+- 📏 **Calibration groundwork** — set a completed test as a comparison baseline; reports show observed deltas against it (same chemistry & duration enforced), explicitly *not* state-of-health
 - ♿ **Accessibility & performance** — visible focus states, keyboard navigation, `prefers-reduced-motion` respected in CSS *and* in the 3D scene
 - 📱 **Responsive** — sidebar collapses into a drawer on mobile; layouts verified at laptop/tablet/phone widths
 
@@ -100,12 +107,20 @@ src/
 │  ├─ three/            # BatteryTesterScene, TesterAssemblyScene, WebGL guard & fallback
 │  ├─ charts/           # Recharts time-series with honest gaps
 │  └─ …
-├─ pages/               # One component per route
+├─ pages/               # One component per route (incl. FlashPage — firmware flashing)
 ├─ state/               # Zustand stores + the TestEngine state machine
-├─ services/            # Device transports, validation, demo sampler, CSV, storage
+├─ services/            # Device transports (Web Serial + WebSocket), validation, esptool-js
+│  └─ device/           #   flasher, firmwareCompile client, MD5 helper, transports
 ├─ data/                # Component catalogue, chemistries
 └─ lib/                 # Formatting, IDs, class helpers
+firmware/
+└─ punarva_tester/      # Reference ESP32 C++ sketch (JSON measurement protocol)
 ```
+
+Flashing & compilation live in **`vite.config.ts`** (dev-only plugin serving
+`/__punarva/health`, `/__punarva/compile`, `/__punarva/compile-source` with
+arduino-cli) and **`src/services/device/flasher.ts`** (esptool-js over Web
+Serial). The compile bridge runs only while `npm run dev` runs.
 
 Deep dives live in [`docs/`](docs):
 
@@ -121,6 +136,9 @@ The following were executed and passed on the shipped code:
 
 - ✅ `npm run build` — TypeScript strict check + Vite production build, zero errors
 - ✅ `npm run lint` — zero errors
+- ✅ `npm run smoke:md5` — flash MD5 helper matches Node's crypto on all vectors
+- ✅ C++ compile pipeline, end-to-end: bundled sketch **and** an uploaded user `.cpp` both produce flashable images through `/__punarva/compile-source`; compiler errors surface verbatim in the UI
+- ✅ Missing arduino-cli library → explicit `fatal error: Foo.h` message in the Flash page; resolved with `arduino-cli lib install`
 - ✅ Full demo test run in a real browser: start → pre-checks → ready → testing (4 Hz samples) → processing → results
 - ✅ Stop/reset controls, duplicate-start protection, timer cleanup
 - ✅ CSV export fires a real download; history records persist and re-open
@@ -146,12 +164,15 @@ This is an **engineering prototype**, and the software is deliberate about what 
 
 | Stage | Item | Status |
 | --- | --- | --- |
+| 1 | Reference ESP32 acquisition firmware (protocol-complete C++) | 🟡 Provided in `firmware/` — awaiting hardware validation |
 | 1 | ESP32 + ADS1115 acquisition bring-up | 🟡 Under development |
+| 1 | Browser flashing + C++ compile path | ✅ Implemented (Web Serial + arduino-cli bridge) |
+| 1 | WebSocket device bridge transport | ✅ Implemented (unverified against real bridge) |
 | 1 | Voltage-sensing circuit finalisation | 🟡 Under development |
 | 2 | Current / temperature sensors, OLED, MicroSD logging | ⚪ Planned |
 | 2 | Controlled-load stage (with protection) | ⚪ Planned |
-| 3 | Calibration & repeatable testing | ⚪ Planned |
-| 3 | Validated battery-health estimation | ⚪ Planned |
+| 3 | Calibration & repeatable testing | 🟡 Calibration groundwork: reference-test comparison (observed deltas only) implemented |
+| 3 | Validated battery-health estimation | ⚪ Planned — deliberately not fabricated before validated data exists |
 | 4 | AI/ML analysis after sufficient real data | ⚪ Planned |
 | 4 | Second-life evaluation support | ⚪ Planned |
 

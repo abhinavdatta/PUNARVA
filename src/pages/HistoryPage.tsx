@@ -28,6 +28,14 @@ import { cn } from '@/lib/utils'
 
 type SourceFilter = 'all' | DataSource
 type StatusFilter = 'all' | 'completed' | 'stopped'
+type DateRangeFilter = 'all' | '24h' | '7d' | '30d'
+type SortFilter = 'newest' | 'oldest' | 'duration'
+
+const DATE_RANGE_MAX_AGE_MS: Record<Exclude<DateRangeFilter, 'all'>, number> = {
+  '24h': 24 * 3600_000,
+  '7d': 7 * 24 * 3600_000,
+  '30d': 30 * 24 * 3600_000,
+}
 
 export function HistoryPage() {
   const records = useHistoryStore((s) => s.records)
@@ -42,15 +50,22 @@ export function HistoryPage() {
   const [query, setQuery] = useState('')
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [dateRange, setDateRange] = useState<DateRangeFilter>('all')
+  const [sortFilter, setSortFilter] = useState<SortFilter>('newest')
   const [confirmClear, setConfirmClear] = useState(false)
   const [importErrors, setImportErrors] = useState<string[] | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return records.filter((r) => {
+    const now = Date.now()
+    const result = records.filter((r) => {
       if (sourceFilter !== 'all' && r.source !== sourceFilter) return false
       if (statusFilter !== 'all' && r.status !== statusFilter) return false
+      if (dateRange !== 'all') {
+        const startedAt = new Date(r.startedAt).getTime()
+        if (Number.isNaN(startedAt) || now - startedAt > DATE_RANGE_MAX_AGE_MS[dateRange]) return false
+      }
       if (q === '') return true
       return (
         r.id.toLowerCase().includes(q) ||
@@ -58,7 +73,10 @@ export function HistoryPage() {
         r.config.chemistry.toLowerCase().includes(q)
       )
     })
-  }, [records, query, sourceFilter, statusFilter])
+    if (sortFilter === 'oldest') return [...result].sort((a, b) => a.startedAt.localeCompare(b.startedAt))
+    if (sortFilter === 'duration') return [...result].sort((a, b) => b.config.durationS - a.config.durationS)
+    return result // store keeps records newest-first already
+  }, [records, query, sourceFilter, statusFilter, dateRange, sortFilter])
 
   const storageKey = 'punarva.history.v1'
   const approxBytes = storageMode === 'local' ? storageBytes(window.localStorage, storageKey) : 0
@@ -155,7 +173,7 @@ export function HistoryPage() {
         />
         <CardBody className="space-y-4 pt-4">
           {/* Filters */}
-          <div className="grid gap-3 sm:grid-cols-[1fr_180px_180px]">
+          <div className="grid gap-3 sm:grid-cols-[1fr_150px_140px_140px_150px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-lavender/50" aria-hidden />
               <input
@@ -177,6 +195,17 @@ export function HistoryPage() {
               <option value="all">All statuses</option>
               <option value="completed">Completed</option>
               <option value="stopped">Stopped early</option>
+            </SelectField>
+            <SelectField value={dateRange} onChange={(e) => setDateRange(e.target.value as DateRangeFilter)} aria-label="Filter by date range">
+              <option value="all">Any date</option>
+              <option value="24h">Last 24 hours</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+            </SelectField>
+            <SelectField value={sortFilter} onChange={(e) => setSortFilter(e.target.value as SortFilter)} aria-label="Sort records">
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="duration">Longest test</option>
             </SelectField>
           </div>
 

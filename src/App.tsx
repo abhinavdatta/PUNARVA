@@ -8,6 +8,7 @@ import { HistoryPage } from '@/pages/HistoryPage'
 import { TechnologyPage } from '@/pages/TechnologyPage'
 import { AboutPage } from '@/pages/AboutPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { FlashPage } from '@/pages/FlashPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { testEngine } from '@/state/testEngine'
 import { useDeviceStore } from '@/state/deviceStore'
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/technology" element={<TechnologyPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/flash" element={<FlashPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AppShell>

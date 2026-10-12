@@ -12,6 +12,10 @@ actuation is even discussable.
 | --- | --- |
 | Dashboard ingest layer (validation, staleness, events) | ✅ Implemented |
 | Web Serial transport (Chrome/Edge/Opera desktop) | ✅ Implemented, unverified against real hardware |
+| WebSocket bridge transport (same protocol over ws://) | ✅ Implemented, unverified against real bridges |
+| Browser-based ESP32 firmware flashing (esptool-js) | ✅ Implemented, unverified against real hardware |
+| C++ → .bin compile bridge (arduino-cli, optional local helper) | ✅ Implemented |
+| Reference ESP32 firmware source (`firmware/punarva_tester`) | ✅ Provided, not yet validated on hardware |
 | Documented wire protocol | ✅ Implemented (see below) |
 | Demo data source (clearly labelled) | ✅ Implemented |
 | Validated ESP32 firmware producing this protocol | ❌ Not yet — under development |
@@ -33,9 +37,9 @@ The dashboard supports **Web Serial** out of the box
   `port.open({ baudRate: 115200 })` → read loop splits lines → `JSON.parse` →
   validation
 
-A future backend/WebSocket bridge only needs to implement the same
-`DeviceTransport` interface (`connect`, `disconnect`, `onRaw/onError/onClose`)
-and register it — no UI changes required.
+A WebSocket bridge (`src/services/device/webSocketTransport.ts`) already
+implements the same `DeviceTransport` interface (`connect`, `disconnect`,
+`onRaw/onError/onClose`) — no UI changes are needed to use it.
 
 Error handling covered by the UI:
 
@@ -51,6 +55,22 @@ Error handling covered by the UI:
 ---
 
 ## 3. Wire protocol
+
+### 3.1 Transports
+
+The dashboard offers two read-only transports, both feeding the same validation
+path:
+
+| Transport | Where | Use |
+| --- | --- | --- |
+| **Web Serial** | direct USB, desktop Chrome/Edge/Opera | ESP32 plugged into the machine running the dashboard |
+| **WebSocket bridge** | `Settings → Device connection → WebSocket bridge`, default `ws://localhost:8765` | ESP32 far from the dashboard machine; any small bridge process relays its serial JSON lines over ws:// |
+
+A reference bridge is not required to be fancy: read serial lines, send each
+line as a WebSocket text message. The dashboard handles single values and
+newline-delimited batches alike.
+
+### 3.2 Payload
 
 One JSON object per line:
 

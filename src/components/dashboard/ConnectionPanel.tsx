@@ -24,19 +24,21 @@ export function ConnectionPanel({ compact = false }: { compact?: boolean }) {
   const serialSupported = useDeviceStore((s) => s.serialSupported)
   const transportName = useDeviceStore((s) => s.transportName)
   const invalidCount = useDeviceStore((s) => s.invalidCount)
-  const connectSerial = useDeviceStore((s) => s.connectSerial)
+  const connectDevice = useDeviceStore((s) => s.connectDevice)
   const disconnectSerial = useDeviceStore((s) => s.disconnectSerial)
+  const transportKind = useDeviceStore((s) => s.transportKind)
   const pushEvent = useDeviceStore((s) => s.pushEvent)
 
   const meta = META[connection]
   const busy = connection === 'connecting'
+  const canConnect = transportKind === 'websocket' ? true : serialSupported
 
   function onConnect() {
-    if (!serialSupported) {
+    if (!canConnect) {
       pushEvent('warn', 'Web Serial is not supported in this browser — hardware connection unavailable.')
       return
     }
-    void connectSerial()
+    void connectDevice()
   }
 
   return (
@@ -52,10 +54,11 @@ export function ConnectionPanel({ compact = false }: { compact?: boolean }) {
         }
       />
       <CardBody className="space-y-4">
-        {!serialSupported && (
+        {!canConnect && (
           <p className="flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2.5 text-xs leading-relaxed text-amber-400">
             <CircleSlash className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-            Web Serial is unavailable in this browser. Use desktop Chrome, Edge, or Opera to connect the ESP32.
+            Web Serial is unavailable in this browser. Use desktop Chrome, Edge, or Opera to connect the ESP32, or set up
+            a WebSocket bridge in Settings.
           </p>
         )}
 
@@ -86,7 +89,7 @@ export function ConnectionPanel({ compact = false }: { compact?: boolean }) {
               <Unplug className="h-4 w-4" aria-hidden /> Disconnect
             </Button>
           ) : (
-            <Button variant="teal" size="sm" onClick={onConnect} loading={busy} disabled={!serialSupported}>
+            <Button variant="teal" size="sm" onClick={onConnect} loading={busy} disabled={!canConnect}>
               <PlugZap className="h-4 w-4" aria-hidden />
               {busy ? 'Connecting…' : 'Connect device'}
             </Button>

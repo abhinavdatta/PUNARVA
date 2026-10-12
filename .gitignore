@@ -4,3 +4,9 @@ dist-ssr
 *.local
 *.log
 .DS_Store
+
+# arduino-cli build artifacts (compile bridge)
+.arduino-build
+
+# Arduino IDE/CLI in-tree build output
+firmware/**/build/

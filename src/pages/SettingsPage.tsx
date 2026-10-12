@@ -26,8 +26,12 @@ export function SettingsPage() {
   const serialSupported = useDeviceStore((s) => s.serialSupported)
   const transportName = useDeviceStore((s) => s.transportName)
   const invalidCount = useDeviceStore((s) => s.invalidCount)
-  const connectSerial = useDeviceStore((s) => s.connectSerial)
+  const connectDevice = useDeviceStore((s) => s.connectDevice)
   const disconnectSerial = useDeviceStore((s) => s.disconnectSerial)
+  const transportKind = useDeviceStore((s) => s.transportKind)
+  const setTransportKind = useDeviceStore((s) => s.setTransportKind)
+  const websocketUrl = useDeviceStore((s) => s.websocketUrl)
+  const setWebsocketUrl = useDeviceStore((s) => s.setWebsocketUrl)
   const pushEvent = useDeviceStore((s) => s.pushEvent)
 
   const motionOverride = useSettingsStore((s) => s.motionOverride)
@@ -61,6 +65,55 @@ export function SettingsPage() {
               {connectionError}
             </p>
           )}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex overflow-hidden rounded-lg border border-plum-500/70" role="tablist" aria-label="Transport type">
+              {([
+                ['web-serial', 'Web Serial (USB)', !serialSupported],
+                ['websocket', 'WebSocket bridge', false],
+              ] as const).map(([kind, label, unsupported]) => (
+                <button
+                  key={kind}
+                  type="button"
+                  role="tab"
+                  aria-selected={transportKind === kind}
+                  disabled={connection === 'connected' || connection === 'connecting' || unsupported}
+                  title={unsupported ? 'Not available in this browser' : undefined}
+                  onClick={() => setTransportKind(kind)}
+                  className={cn(
+                    'px-4 py-2 text-sm font-medium transition-colors disabled:opacity-40',
+                    transportKind === kind
+                      ? 'bg-copper-500/15 text-copper-400'
+                      : 'bg-plum-800/60 text-lavender hover:bg-plum-700/60 hover:text-ivory',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-lavender/60">
+              {transportKind === 'web-serial'
+                ? 'Direct USB connection — desktop Chrome, Edge, or Opera.'
+                : 'Same JSON-line protocol via a ws:// bridge process.'}
+            </p>
+          </div>
+
+          {transportKind === 'websocket' && (
+            <label className="block max-w-md">
+              <span className="label-caps mb-1.5 block">Bridge URL</span>
+              <input
+                type="text"
+                value={websocketUrl}
+                onChange={(e) => setWebsocketUrl(e.target.value)}
+                disabled={connection === 'connected' || connection === 'connecting'}
+                placeholder="ws://localhost:8765"
+                className="w-full rounded-lg border border-plum-500/70 bg-plum-800/80 px-3 py-2 font-mono text-sm text-ivory"
+              />
+              <span className="mt-1 block text-[11px] text-lavender/60">
+                The bridge relays the ESP32's JSON-line protocol over WebSocket.
+              </span>
+            </label>
+          )}
+
           <dl className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-2.5 text-sm">
             <dt className="text-lavender/70">Transport</dt>
             <dd className="text-ivory">{transportName ?? 'None connected'}</dd>
@@ -74,7 +127,11 @@ export function SettingsPage() {
             {connection === 'connected' ? (
               <Button variant="danger" onClick={() => void disconnectSerial()}>Disconnect device</Button>
             ) : (
-              <Button variant="teal" onClick={() => void connectSerial()} disabled={!serialSupported}>
+              <Button
+                variant="teal"
+                onClick={() => void connectDevice()}
+                disabled={transportKind === 'web-serial' ? !serialSupported : false}
+              >
                 Connect device…
               </Button>
             )}
