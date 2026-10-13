@@ -56,7 +56,27 @@ npm run preview      # → http://localhost:4173
 | `npm run build` | Type-check (`tsc -b`) **and** production build — CI-safe |
 | `npm run lint` | ESLint over the whole project |
 | `npm run preview` | Serve the production build locally |
+| `npm run cf:dev` | Build, then serve the **Cloudflare Workers** stack locally (port 8787) |
+| `npm run deploy` | Build, then deploy to **Cloudflare Workers** |
 | `npm run smoke:md5` | Verify the flash-image MD5 helper against Node's crypto |
+
+---
+
+## ☁️ Deploying to Cloudflare Workers
+
+The dashboard is a pure SPA, so it runs on **Cloudflare Workers static assets** with a tiny Worker entry for the tooling endpoints:
+
+```bash
+npx wrangler login      # one-time browser auth
+npm run deploy          # build + wrangler deploy → https://punarva.<account>.workers.dev
+```
+
+What you get (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)):
+
+- `dist/` served from Workers static assets with **SPA fallback** — deep links like `/battery-check` and `/results/<id>` resolve correctly;
+- a minimal `worker/index.ts` that answers `/__punarva/*` with a precise "compile bridge is dev-only" message instead of an HTML-page error;
+- Web Serial (device connection + firmware flashing) keeps working from the deployed HTTPS origin in desktop Chrome/Edge/Opera — it's a browser API, nothing server-side;
+- honest behaviour preserved: the arduino-cli compile bridge is **local-dev only**, and the deployed site says so.
 
 ---
 
