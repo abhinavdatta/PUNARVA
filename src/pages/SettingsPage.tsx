@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Cable, Database, Eye, HardDrive, Monitor, ShieldCheck, Trash2 } from 'lucide-react'
+import { Cable, Database, Eye, HardDrive, Monitor, Ruler, ShieldCheck, Trash2 } from 'lucide-react'
 import { useDeviceStore } from '@/state/deviceStore'
 import { useHistoryStore } from '@/state/historyStore'
 import { useSettingsStore, type MotionPreference } from '@/state/settingsStore'
@@ -12,6 +12,14 @@ import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { CodeBlock } from '@/components/ui/CodeBlock'
 import { Modal } from '@/components/ui/Modal'
+import {
+  useCalibrationStore,
+  IDENTITY_CALIBRATION,
+  isIdentityCalibration,
+  describeCalibration,
+  type ChannelCalibration,
+  type SensorCalibration,
+} from '@/state/calibrationStore'
 import { cn } from '@/lib/utils'
 
 const MOTION_OPTIONS: Array<{ id: MotionPreference; label: string; note: string }> = [
@@ -26,8 +34,12 @@ export function SettingsPage() {
   const serialSupported = useDeviceStore((s) => s.serialSupported)
   const transportName = useDeviceStore((s) => s.transportName)
   const invalidCount = useDeviceStore((s) => s.invalidCount)
-  const connectSerial = useDeviceStore((s) => s.connectSerial)
+  const connectDevice = useDeviceStore((s) => s.connectDevice)
   const disconnectSerial = useDeviceStore((s) => s.disconnectSerial)
+  const transportKind = useDeviceStore((s) => s.transportKind)
+  const setTransportKind = useDeviceStore((s) => s.setTransportKind)
+  const websocketUrl = useDeviceStore((s) => s.websocketUrl)
+  const setWebsocketUrl = useDeviceStore((s) => s.setWebsocketUrl)
   const pushEvent = useDeviceStore((s) => s.pushEvent)
 
   const motionOverride = useSettingsStore((s) => s.motionOverride)
@@ -37,8 +49,25 @@ export function SettingsPage() {
   const storageMode = useHistoryStore((s) => s.storageMode)
   const clearAll = useHistoryStore((s) => s.clearAll)
 
+  const sensorCal = useCalibrationStore((s) => s.sensor)
+  const setSensorCal = useCalibrationStore((s) => s.setSensor)
+  const resetSensorCal = useCalibrationStore((s) => s.resetSensor)
+
   const [confirmClear, setConfirmClear] = useState(false)
+  const [calDraft, setCalDraft] = useState<SensorCalibration>(sensorCal)
   const support = browserSupportSummary()
+
+  const calDirty = JSON.stringify(calDraft) !== JSON.stringify(sensorCal)
+  const calIdentity = isIdentityCalibration(sensorCal)
+
+  function setChannel(key: keyof SensorCalibration, field: keyof ChannelCalibration, value: string) {
+    const n = Number(value)
+    if (!Number.isFinite(n)) return
+    // Guardrails: gains far from unity or huge offsets are almost certainly typos,
+    // and quietly applying them would corrupt every reading.
+    const bounded = field === 'gain' ? Math.min(10, Math.max(0.01, n)) : Math.min(100, Math.max(-100, n))
+    setCalDraft((d) => ({ ...d, [key]: { ...d[key], [field]: bounded } }))
+  }
 
   return (
     <div className="space-y-6">
@@ -61,6 +90,55 @@ export function SettingsPage() {
               {connectionError}
             </p>
           )}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex overflow-hidden rounded-lg border border-plum-500/70" role="tablist" aria-label="Transport type">
+              {([
+                ['web-serial', 'Web Serial (USB)', !serialSupported],
+                ['websocket', 'WebSocket bridge', false],
+              ] as const).map(([kind, label, unsupported]) => (
+                <button
+                  key={kind}
+                  type="button"
+                  role="tab"
+                  aria-selected={transportKind === kind}
+                  disabled={connection === 'connected' || connection === 'connecting' || unsupported}
+                  title={unsupported ? 'Not available in this browser' : undefined}
+                  onClick={() => setTransportKind(kind)}
+                  className={cn(
+                    'px-4 py-2 text-sm font-medium transition-colors disabled:opacity-40',
+                    transportKind === kind
+                      ? 'bg-copper-500/15 text-copper-400'
+                      : 'bg-plum-800/60 text-lavender hover:bg-plum-700/60 hover:text-ivory',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-lavender/60">
+              {transportKind === 'web-serial'
+                ? 'Direct USB connection — desktop Chrome, Edge, or Opera.'
+                : 'Same JSON-line protocol via a ws:// bridge process.'}
+            </p>
+          </div>
+
+          {transportKind === 'websocket' && (
+            <label className="block max-w-md">
+              <span className="label-caps mb-1.5 block">Bridge URL</span>
+              <input
+                type="text"
+                value={websocketUrl}
+                onChange={(e) => setWebsocketUrl(e.target.value)}
+                disabled={connection === 'connected' || connection === 'connecting'}
+                placeholder="ws://localhost:8765"
+                className="w-full rounded-lg border border-plum-500/70 bg-plum-800/80 px-3 py-2 font-mono text-sm text-ivory"
+              />
+              <span className="mt-1 block text-[11px] text-lavender/60">
+                The bridge relays the ESP32's JSON-line protocol over WebSocket.
+              </span>
+            </label>
+          )}
+
           <dl className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-2.5 text-sm">
             <dt className="text-lavender/70">Transport</dt>
             <dd className="text-ivory">{transportName ?? 'None connected'}</dd>
@@ -74,7 +152,11 @@ export function SettingsPage() {
             {connection === 'connected' ? (
               <Button variant="danger" onClick={() => void disconnectSerial()}>Disconnect device</Button>
             ) : (
-              <Button variant="teal" onClick={() => void connectSerial()} disabled={!serialSupported}>
+              <Button
+                variant="teal"
+                onClick={() => void connectDevice()}
+                disabled={transportKind === 'web-serial' ? !serialSupported : false}
+              >
                 Connect device…
               </Button>
             )}
@@ -90,6 +172,117 @@ export function SettingsPage() {
             Secrets and API keys never live in this frontend. The connection layer is read-only: no website button
             can actuate a physical load — that requires separately validated firmware, protocol, and electrical
             protection.
+          </p>
+        </CardBody>
+      </Card>
+
+      {/* ---------------------------- Calibration ---------------------------- */}
+      <Card>
+        <CardHeader
+          title="Calibration"
+          icon={<Ruler aria-hidden />}
+          subtitle="Gain / offset corrections applied to incoming hardware readings — derived against a trusted reference instrument"
+          actions={
+            <Badge tone={calIdentity ? 'neutral' : 'copper'}>
+              {calIdentity ? 'No corrections' : 'Active'}
+            </Badge>
+          }
+        />
+        <CardBody className="space-y-4">
+          <p className="text-xs leading-relaxed text-lavender/80">
+            Enter the gain (<span className="font-mono">corrected = gain × raw + offset</span>) you derived by
+            comparing this device's readings against a calibrated reference meter at one or more known points.
+            Corrections apply <strong className="text-ivory">only to live hardware readings</strong> — demo data and
+            imported records are never adjusted. Validation runs on the raw payload first, so calibration cannot
+            make nonsense values pass.
+          </p>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[420px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-plum-600/60 text-[11px] uppercase tracking-wider text-lavender/60">
+                  <th className="px-3 py-2 font-semibold">Channel</th>
+                  <th className="px-3 py-2 font-semibold">Gain</th>
+                  <th className="px-3 py-2 font-semibold">Offset</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-plum-600/40">
+                {(
+                  [
+                    ['voltage_v', 'Voltage (V)'],
+                    ['current_a', 'Current (A)'],
+                    ['temperature_c', 'Temperature (°C)'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <tr key={key}>
+                    <td className="px-3 py-2 font-medium text-ivory">{label}</td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        step="0.001"
+                        value={calDraft[key].gain}
+                        onChange={(e) => setChannel(key, 'gain', e.target.value)}
+                        aria-label={`${label} gain`}
+                        className="numeric w-28 rounded-lg border border-plum-500/70 bg-plum-800/80 px-2.5 py-1.5 text-sm text-ivory"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        step="0.001"
+                        value={calDraft[key].offset}
+                        onChange={(e) => setChannel(key, 'offset', e.target.value)}
+                        aria-label={`${label} offset`}
+                        className="numeric w-28 rounded-lg border border-plum-500/70 bg-plum-800/80 px-2.5 py-1.5 text-sm text-ivory"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="teal"
+              disabled={!calDirty}
+              onClick={() => {
+                setSensorCal(calDraft)
+                pushEvent(
+                  isIdentityCalibration(calDraft) ? 'info' : 'warn',
+                  isIdentityCalibration(calDraft)
+                    ? 'Sensor calibration cleared.'
+                    : `Sensor calibration saved: ${describeCalibration(calDraft)}.`,
+                )
+              }}
+            >
+              {calDirty ? 'Save calibration' : 'Saved'}
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={!calDirty}
+              onClick={() => setCalDraft(sensorCal)}
+            >
+              Revert
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={calIdentity}
+              onClick={() => {
+                setCalDraft(IDENTITY_CALIBRATION)
+                resetSensorCal()
+                pushEvent('info', 'Sensor calibration reset to identity (1.0 / 0.0).')
+              }}
+            >
+              Reset to identity
+            </Button>
+          </div>
+
+          <p className="flex items-start gap-2 rounded-lg border border-plum-500/50 bg-plum-800/50 px-3.5 py-3 text-xs leading-relaxed text-lavender/85">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-sea-400" aria-hidden />
+            Calibration corrects instrument bias — it does not validate the sensing chain. Until divider ratios,
+            shunt values, and gain stages are verified against a traceable reference, reports built on calibrated
+            readings remain engineering measurements, not certified values.
           </p>
         </CardBody>
       </Card>

@@ -11,6 +11,7 @@ import { NavList } from './Sidebar'
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Overview',
   '/battery-check': 'Battery Check',
+  '/flash': 'Flash Firmware',
   '/history': 'Test History',
   '/technology': 'Technology',
   '/about': 'Project Information',

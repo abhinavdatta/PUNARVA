@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "smoke:md5": "tsx scripts/md5-smoke.ts",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -16,6 +17,7 @@
     "@react-three/drei": "^10.0.7",
     "@react-three/fiber": "^9.1.2",
     "clsx": "^2.1.1",
+    "esptool-js": "^0.7.0",
     "lucide-react": "^0.525.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -31,6 +33,7 @@
     "@types/react-dom": "^19.1.2",
     "@types/three": "^0.174.0",
     "@vitejs/plugin-react": "^4.4.1",
+    "tsx": "^4.19.2",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.25.0",
     "eslint-plugin-react-hooks": "^5.2.0",

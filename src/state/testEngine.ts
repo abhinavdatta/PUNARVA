@@ -5,6 +5,7 @@ import { buildRecord } from '@/services/records'
 import { newTestId } from '@/lib/id'
 import { useDeviceStore } from './deviceStore'
 import { useHistoryStore } from './historyStore'
+import { useCalibrationStore, isIdentityCalibration, describeCalibration } from './calibrationStore'
 import { SAMPLE_INTERVAL_MS, useTestStore, type PreCheck } from './testStore'
 
 const PRECHECK_STEP_MS = 420
@@ -246,6 +247,16 @@ class TestEngine {
         expectedSamples: s.expectedSamples,
         samples: s.samples,
       })
+      // Provenance: hardware tests recorded while sensor calibration was
+      // active say so in the report, so numbers are never silently adjusted.
+      if (record.source === 'HARDWARE') {
+        const cal = useCalibrationStore.getState().sensor
+        if (!isIdentityCalibration(cal)) {
+          record.warnings.push(
+            `Readings passed through user-entered sensor calibration (${describeCalibration(cal)}) — see Settings → Calibration. Raw device values were NOT stored.`,
+          )
+        }
+      }
       useHistoryStore.getState().addRecord(record)
       s.setResult(record)
       s.setPhase('results')

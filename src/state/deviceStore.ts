@@ -2,15 +2,22 @@ import { create } from 'zustand'
 import type { ConnectionStatus, DataSource, Reading, SystemEvent } from '@/types'
 import { isStaleReading, validateReading } from '@/services/validation'
 import { WebSerialTransport, isWebSerialSupported, type DeviceTransport } from '@/services/device/transports'
+import { WebSocketTransport, isWebSocketSupported } from '@/services/device/webSocketTransport'
+import { useCalibrationStore, isIdentityCalibration, describeCalibration } from '@/state/calibrationStore'
 import { uid } from '@/lib/uid'
 
 const MAX_EVENTS = 60
+
+export type DeviceTransportKind = 'web-serial' | 'websocket'
 
 interface DeviceState {
   connection: ConnectionStatus
   connectionError: string | null
   transportName: string | null
   serialSupported: boolean
+  websocketSupported: boolean
+  transportKind: DeviceTransportKind
+  websocketUrl: string
   lastReading: Reading | null
   lastReadingSource: Extract<DataSource, 'DEMO' | 'HARDWARE'> | null
   lastValidAt: string | null
@@ -20,7 +27,9 @@ interface DeviceState {
 
   pushEvent: (level: SystemEvent['level'], message: string) => void
   markEventsSeen: () => void
-  connectSerial: () => Promise<void>
+  setTransportKind: (kind: DeviceTransportKind) => void
+  setWebsocketUrl: (url: string) => void
+  connectDevice: () => Promise<void>
   disconnectSerial: () => Promise<void>
   /** Record a validated demo reading (demo test live values). Always labelled DEMO. */
   noteDemoReading: (values: { voltage_v: number; current_a: number; temperature_c: number }) => void
@@ -30,11 +39,27 @@ interface DeviceState {
 
 let transport: DeviceTransport | null = null
 
+/** Basic sanity check for ws:// or wss:// URLs. */
+function parseWebsocketUrl(url: string): string | null {
+  const trimmed = url.trim()
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') return null
+    if (parsed.host === '') return null
+    return trimmed
+  } catch {
+    return null
+  }
+}
+
 export const useDeviceStore = create<DeviceState>()((set, get) => ({
   connection: 'disconnected',
   connectionError: null,
   transportName: null,
   serialSupported: isWebSerialSupported(),
+  websocketSupported: isWebSocketSupported(),
+  transportKind: 'web-serial',
+  websocketUrl: 'ws://localhost:8765',
   lastReading: null,
   lastReadingSource: null,
   lastValidAt: null,
@@ -50,12 +75,46 @@ export const useDeviceStore = create<DeviceState>()((set, get) => ({
 
   markEventsSeen: () => set({ eventUnseen: 0 }),
 
-  connectSerial: async () => {
-    if (transport === null) transport = new WebSerialTransport()
+  setTransportKind: (transportKind) => {
+    if (get().connection === 'connected' || get().connection === 'connecting') return
+    set({ transportKind })
+  },
+
+  setWebsocketUrl: (url) => set({ websocketUrl: url }),
+
+  connectDevice: async () => {
     if (get().connection === 'connecting' || get().connection === 'connected') return
 
+    // Tear down any transport from a previous session kind.
+    if (transport) {
+      try {
+        await transport.disconnect()
+      } catch {
+        /* ignore */
+      }
+      transport = null
+    }
+
+    const kind = get().transportKind
+    try {
+      if (kind === 'websocket') {
+        const url = parseWebsocketUrl(get().websocketUrl)
+        if (url === null) {
+          throw new Error('Enter a valid ws:// or wss:// URL for the bridge.')
+        }
+        transport = new WebSocketTransport(url)
+      } else {
+        transport = new WebSerialTransport()
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      set({ connection: 'error', connectionError: message, transportName: null })
+      get().pushEvent('error', `Connection failed — ${message}`)
+      return
+    }
+
     set({ connection: 'connecting', connectionError: null })
-    get().pushEvent('info', 'Requesting serial port…')
+    get().pushEvent('info', kind === 'websocket' ? `Connecting to bridge ${get().websocketUrl}…` : 'Requesting serial port…')
 
     try {
       await transport.connect({
@@ -71,6 +130,10 @@ export const useDeviceStore = create<DeviceState>()((set, get) => ({
       })
       set({ connection: 'connected', transportName: transport.name })
       get().pushEvent('info', `Connected via ${transport.name}. Waiting for valid measurement lines…`)
+      const cal = useCalibrationStore.getState().sensor
+      if (!isIdentityCalibration(cal)) {
+        get().pushEvent('warn', `Sensor calibration ACTIVE for incoming hardware readings: ${describeCalibration(cal)} (see Settings → Calibration).`)
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       set({ connection: 'error', connectionError: message, transportName: null })
@@ -80,6 +143,7 @@ export const useDeviceStore = create<DeviceState>()((set, get) => ({
 
   disconnectSerial: async () => {
     if (transport) await transport.disconnect()
+    transport = null
     set({ connection: 'disconnected', transportName: null, connectionError: null })
     get().pushEvent('info', 'Device disconnected by user.')
   },
@@ -94,10 +158,23 @@ export const useDeviceStore = create<DeviceState>()((set, get) => ({
     if (result.errors.length > 0) {
       get().pushEvent('warn', `Payload accepted with issues: ${result.errors[0]}`)
     }
+    // Apply user-entered sensor calibration (gain * raw + offset). Validation
+    // above runs on the RAW payload first, so nonsense is still rejected
+    // before any calibration arithmetic can reshape it into plausibility.
+    const cal = useCalibrationStore.getState().sensor
+    const rawValue = result.value
+    const calibrated: Reading = isIdentityCalibration(cal)
+      ? rawValue
+      : {
+          voltage_v: rawValue.voltage_v * cal.voltage_v.gain + cal.voltage_v.offset,
+          current_a: rawValue.current_a * cal.current_a.gain + cal.current_a.offset,
+          temperature_c: rawValue.temperature_c * cal.temperature_c.gain + cal.temperature_c.offset,
+          timestamp: rawValue.timestamp,
+        }
     set({
-      lastReading: result.value,
+      lastReading: calibrated,
       lastReadingSource: 'HARDWARE',
-      lastValidAt: result.value.timestamp,
+      lastValidAt: calibrated.timestamp,
     })
   },
 

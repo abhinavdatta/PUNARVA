@@ -1,12 +1,16 @@
-import { Download, FileWarning, Info, ShieldAlert } from 'lucide-react'
+import { Download, FileWarning, Info, ShieldAlert, Star, StarOff } from 'lucide-react'
 import type { StatSummary, TestRecord } from '@/types'
 import { fmtDateTime, fmtNum, fmtPct } from '@/lib/format'
 import { chemistryLabel } from '@/data/chemistry'
 import { exportSamplesCsv } from '@/services/csv/exportCsv'
+import { compareAgainstReference, referenceFromRecord } from '@/services/calibration'
+import { useCalibrationStore } from '@/state/calibrationStore'
+import { useDeviceStore } from '@/state/deviceStore'
 import { Badge, DataSourceBadge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { ChartCard } from '@/components/charts/ChartCard'
+import { cn } from '@/lib/utils'
 
 const HEALTH_NOTICE =
   'Battery health assessment unavailable — validated test data and calibration required.'
@@ -46,6 +50,12 @@ function StatBlock({ label, unit, stat, digits }: { label: string; unit: string;
  * safety claim is ever produced.
  */
 export function ResultsReport({ record }: { record: TestRecord }) {
+  const reference = useCalibrationStore((s) => s.reference)
+  const setReference = useCalibrationStore((s) => s.setReference)
+  const pushEvent = useDeviceStore((s) => s.pushEvent)
+  const isReference = reference?.recordId === record.id
+  const comparison = compareAgainstReference(record, reference)
+
   const sourceNote =
     record.source === 'DEMO'
       ? 'This report was produced from simulated demo data. It is not a measurement of a real battery.'
@@ -69,9 +79,32 @@ export function ResultsReport({ record }: { record: TestRecord }) {
               </div>
               <p className="numeric mt-1.5 text-sm text-lavender">{fmtDateTime(record.startedAt)}</p>
             </div>
-            <Button variant="teal" size="sm" onClick={() => exportSamplesCsv(record)}>
-              <Download className="h-4 w-4" aria-hidden /> Export CSV
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={isReference ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => {
+                  if (isReference) {
+                    setReference(null)
+                    pushEvent('info', 'Calibration reference cleared.')
+                  } else {
+                    setReference(referenceFromRecord(record))
+                    pushEvent('info', `Test ${record.id} set as calibration reference (baseline for comparisons).`)
+                  }
+                }}
+                title={
+                  isReference
+                    ? 'This test is the comparison baseline. Click to clear.'
+                    : 'Set this completed test as the comparison baseline for future tests with the same chemistry and duration.'
+                }
+              >
+                {isReference ? <StarOff className="h-4 w-4" aria-hidden /> : <Star className="h-4 w-4" aria-hidden />}
+                {isReference ? 'Reference set — clear' : 'Set as reference'}
+              </Button>
+              <Button variant="teal" size="sm" onClick={() => exportSamplesCsv(record)}>
+                <Download className="h-4 w-4" aria-hidden /> Export CSV
+              </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4 border-t border-plum-600/50 pt-4 text-sm sm:grid-cols-3 lg:grid-cols-6">
@@ -135,6 +168,60 @@ export function ResultsReport({ record }: { record: TestRecord }) {
           <StatBlock label="Voltage" unit="V" stat={record.stats.voltage} digits={3} />
           <StatBlock label="Current" unit="A" stat={record.stats.current} digits={3} />
           <StatBlock label="Temperature" unit="°C" stat={record.stats.temperature} digits={1} />
+        </CardBody>
+      </Card>
+
+      {/* Reference comparison — observations only, never a health verdict */}
+      <Card>
+        <CardHeader
+          title="Comparison against reference test"
+          icon={<Star aria-hidden />}
+          subtitle="Observed deltas between this run and your chosen baseline — same chemistry and duration required"
+          actions={
+            !reference ? (
+              <Badge tone="neutral">No reference</Badge>
+            ) : isReference ? (
+              <Badge tone="copper">This is the reference</Badge>
+            ) : comparison.valid ? (
+              <Badge tone="teal">Compared</Badge>
+            ) : (
+              <Badge tone="amber">Not comparable</Badge>
+            )
+          }
+        />
+        <CardBody className="space-y-3">
+          {!reference && (
+            <p className="text-xs leading-relaxed text-lavender/80">
+              Open a completed test and choose <strong className="text-ivory">Set as reference</strong> to establish a
+              baseline. Future tests with the same chemistry and configured duration will be compared against it
+              here — as observed differences only.
+            </p>
+          )}
+          {reference && !isReference && !comparison.valid && (
+            <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3.5 py-2.5 text-xs leading-relaxed text-amber-400">
+              {comparison.reason}
+            </p>
+          )}
+          {comparison.valid && (
+            <ul className="space-y-2.5">
+              {comparison.insights.map((insight, i) => (
+                <li
+                  key={i}
+                  className={cn(
+                    'rounded-lg border px-3.5 py-3',
+                    insight.level === 'warn'
+                      ? 'border-amber-400/30 bg-amber-400/8'
+                      : insight.level === 'info'
+                        ? 'border-sea-400/30 bg-sea-400/8'
+                        : 'border-plum-500/50 bg-plum-800/40',
+                  )}
+                >
+                  <p className="text-sm font-semibold text-ivory">{insight.title}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-lavender/85">{insight.detail}</p>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardBody>
       </Card>
 

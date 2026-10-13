@@ -6,6 +6,7 @@ import {
   Info,
   LayoutDashboard,
   Settings,
+  Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { BrandLockup } from './BrandMark'
@@ -13,6 +14,7 @@ import { BrandLockup } from './BrandMark'
 export const NAV_ITEMS = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/battery-check', label: 'Battery Check', icon: Activity },
+  { to: '/flash', label: 'Flash Firmware', icon: Zap },
   { to: '/history', label: 'Test History', icon: History },
   { to: '/technology', label: 'Technology', icon: Cpu },
   { to: '/about', label: 'Project Information', icon: Info },
