@@ -35,14 +35,63 @@ const BASE_VOLTAGE: Record<string, number> = {
   alkaline: 1.58,
 }
 
+/**
+ * Simulated cell-health scenarios, mirroring the firmware experiment's
+ * screening classes. Pick one by putting a keyword in the battery ID
+ * (e.g. "cell-3 weak"), or leave it out for a plausible default.
+ *   healthy  — small sag, warm-up < 2 °C, screens REUSE
+ *   weak     — larger sag, temp rise ~9 °C — typically screens INSPECT
+ *   failing  — sags to/past cutoff, heats up — typically screens RECYCLE
+ */
+export type DemoScenario = 'healthy' | 'weak' | 'failing'
+
+export function scenarioForBatteryId(batteryId: string): DemoScenario | null {
+  const id = batteryId.toLowerCase()
+  if (/\bfail|recycle|dead\b/.test(id)) return 'failing'
+  if (/\bweak|inspect|worn\b/.test(id)) return 'weak'
+  if (/\bhealthy|good|new\b/.test(id)) return 'healthy'
+  return null
+}
+
+interface ScenarioProfile {
+  /** Peak voltage under load at t=0 (V). */
+  v0: number
+  /** Sag magnitude exponential time-constant (s) — small = fast initial sag. */
+  sagTau: number
+  /** Total sag magnitude (V). */
+  sagAmount: number
+  /** Linear decline rate (V/s). */
+  declineRate: number
+  /** Load current (A). */
+  loadCurrent: number
+  /** Starting temperature (°C). */
+  tempStart: number
+  /** Temperature rise rate (°C/s). */
+  tempRisePerS: number
+}
+
+const SCENARIOS: Record<DemoScenario, ScenarioProfile> = {
+  healthy: { v0: 4.05, sagTau: 8, sagAmount: 0.05, declineRate: 0.00016, loadCurrent: 0.45, tempStart: 28.0, tempRisePerS: 0.045 },
+  weak: { v0: 3.95, sagTau: 5, sagAmount: 0.06, declineRate: 0.0002, loadCurrent: 0.42, tempStart: 28.5, tempRisePerS: 0.26 },
+  failing: { v0: 3.6, sagTau: 3, sagAmount: 0.45, declineRate: 0.014, loadCurrent: 0.38, tempStart: 29.0, tempRisePerS: 0.9 },
+}
+
 export class DemoSampler {
   private rng: () => number
   private phase: number
   private readonly v0: number
+  private readonly profile: ScenarioProfile | null
 
-  constructor(chemistry: string, nominalVoltage: number | null, seed = Math.floor(Math.random() * 2 ** 31)) {
+  constructor(
+    chemistry: string,
+    nominalVoltage: number | null,
+    seed = Math.floor(Math.random() * 2 ** 31),
+    scenario: DemoScenario | null = null,
+    batteryIdHint = '',
+  ) {
     this.rng = mulberry32(seed)
     this.phase = this.rng() * Math.PI * 2
+    this.profile = scenario && chemistry === 'li-ion' ? SCENARIOS[scenario] : null
     const base = BASE_VOLTAGE[chemistry]
     if (base !== undefined) {
       this.v0 = base
@@ -51,6 +100,7 @@ export class DemoSampler {
     } else {
       this.v0 = 3.7
     }
+    void batteryIdHint
   }
 
   /**
@@ -60,6 +110,10 @@ export class DemoSampler {
   next(tSeconds: number): DemoSample | null {
     // Deliberate missing sample (demo of completeness handling)
     if (this.rng() < 0.015) return null
+
+    if (this.profile) {
+      return this.scenarioNext(tSeconds)
+    }
 
     // Voltage: initial sag under load, then slow decline with small wander
     const sag = 0.05 * (1 - Math.exp(-tSeconds / 8))
@@ -76,6 +130,29 @@ export class DemoSampler {
     // Temperature: slow rise from ambient
     const noiseT = (this.rng() - 0.5) * 0.08
     const temperature_c = 28.0 + 0.005 * tSeconds + noiseT
+
+    return {
+      voltage_v: round(voltage_v, 4),
+      current_a: round(current_a, 4),
+      temperature_c: round(temperature_c, 2),
+    }
+  }
+
+  /** Firmware-experiment-shaped responses for li-ion cell-health scenarios. */
+  private scenarioNext(tSeconds: number): DemoSample {
+    const p = this.profile!
+    const sag = p.sagAmount * (1 - Math.exp(-tSeconds / p.sagTau))
+    const decline = p.declineRate * this.v0 * tSeconds
+    const wander = 0.003 * this.v0 * Math.sin(tSeconds / 9 + this.phase)
+    const noiseV = (this.rng() - 0.5) * 0.008 * this.v0
+    const voltage_v = Math.max(1.5, p.v0 - sag - decline + wander + noiseV)
+
+    const ripple = 0.01 * Math.sin(tSeconds / 6 + this.phase / 2)
+    const noiseI = (this.rng() - 0.5) * 0.01
+    const current_a = Math.max(0.01, p.loadCurrent * (1 + ripple + noiseI))
+
+    const noiseT = (this.rng() - 0.5) * 0.15
+    const temperature_c = p.tempStart + p.tempRisePerS * tSeconds + noiseT
 
     return {
       voltage_v: round(voltage_v, 4),

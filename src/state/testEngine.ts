@@ -1,6 +1,6 @@
 import type { Sample, TestConfig, TestStatus } from '@/types'
 import { isStaleReading } from '@/services/validation'
-import { DemoSampler } from '@/services/demo/sampler'
+import { DemoSampler, scenarioForBatteryId } from '@/services/demo/sampler'
 import { buildRecord } from '@/services/records'
 import { newTestId } from '@/lib/id'
 import { useDeviceStore } from './deviceStore'
@@ -46,7 +46,15 @@ class TestEngine {
     this.clearTimers()
     this.testId = newTestId()
     this.lastConsumedTs = null
-    this.sampler = source === 'DEMO' ? new DemoSampler(config.chemistry, config.nominalVoltage) : null
+    this.sampler =
+      source === 'DEMO'
+        ? new DemoSampler(
+            config.chemistry,
+            config.nominalVoltage,
+            undefined,
+            scenarioForBatteryId(config.batteryId),
+          )
+        : null
 
     t.setConfig(config)
     t.setSource(source)
