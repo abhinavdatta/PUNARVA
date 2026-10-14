@@ -119,15 +119,35 @@ Serial.println("\"}");
 
 ## 5. MicroSD data
 
-The planned on-device logging module writes its own files. The dashboard will
-**never** pretend browser storage and the card are the same thing:
+The reference firmware (`firmware/punarva_tester`, `USE_SD` enabled) now logs
+every sample to `/punarva_log.csv` in the dashboard's documented CSV sample
+format (see [CSV_FORMAT.md](CSV_FORMAT.md)). The dashboard will **never**
+pretend browser storage and the card are the same thing:
 
-1. Export/convert the card's log to the dashboard CSV sample format (see
-   [CSV_FORMAT.md](CSV_FORMAT.md)).
+1. Copy the card's log off the device (it is already in the sample format;
+   other logging modules should export/convert to match).
 2. **Test History → Import CSV.** The file is strictly validated; invalid
    structure produces a precise error.
 3. Imported records are labelled `IMPORTED` and clearly distinguished from demo
    and hardware records.
+
+---
+
+## 5b. Sensor calibration
+
+**Settings → Calibration** accepts user-entered gain/offset corrections
+(`corrected = gain × raw + offset`) per channel. Rules enforced in code:
+
+| Behaviour | Implementation |
+| --- | --- |
+| Corrections apply to **live hardware readings only** | Applied in `deviceStore.ingestRaw` after validation; demo data and imported records are untouched |
+| Validation runs on the **raw** payload first | Calibration cannot reshape nonsense into plausibility |
+| Records note when calibration was active | `testEngine.complete()` appends a provenance warning naming the applied corrections |
+| Reconnecting with active calibration announces it | `warn` event on connect, listing the corrections |
+| Values are bounded | Gains clamped to 0.01–10, offsets to ±100 (typo guard) |
+
+Calibration corrects instrument bias — it does **not** validate the sensing
+chain or make values certified.
 
 ---
 

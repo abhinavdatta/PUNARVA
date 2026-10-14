@@ -11,6 +11,7 @@ import {
   RotateCw,
   Code2,
   Hammer,
+  Lock,
 } from 'lucide-react'
 import { useFlashStore } from '@/state/flashStore'
 import { useDeviceStore } from '@/state/deviceStore'
@@ -434,6 +435,18 @@ npm run dev
               Clear log
             </Button>
           </div>
+
+          {!image && !busy && (
+            <p className="text-xs leading-relaxed text-lavender/60">
+              <Lock className="mr-1.5 inline h-3 w-3 align-[-1px]" aria-hidden />
+              Flash unlocks once a firmware image is loaded — compile the bundled sketch above or choose a .bin file in step 1.
+            </p>
+          )}
+          {!serialSupported && !busy && (
+            <p className="text-xs leading-relaxed text-lavender/60">
+              Web Serial is unavailable in this browser — flashing also stays disabled here.
+            </p>
+          )}
 
           <p className="flex items-start gap-2 rounded-lg border border-plum-500/50 bg-plum-800/50 px-3.5 py-3 text-xs leading-relaxed text-lavender/85">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-sea-400" aria-hidden />

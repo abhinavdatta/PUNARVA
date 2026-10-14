@@ -11,6 +11,9 @@
  * Sensing: ADS1115 16-bit I2C ADC (addr 0x48) for voltage + current channels,
  *          DS18B20 (optional) or ADS1115 channel for temperature.
  * Display: SSD1306 128x64 I2C OLED at addr 0x3C (optional — auto-detected).
+ * Storage: MicroSD (SPI, CS=GPIO5) logs every sample as a CSV row in the
+ *          dashboard's documented import format (docs/CSV_FORMAT.md), so a
+ *          card's log imports into Test History via Import CSV.
  *
  * Design rules (mirrors the dashboard's honesty policy):
  *  - Send every sample, one JSON line each; the DASHBOARD validates ranges
@@ -40,12 +43,18 @@
 
 // -------- Optional modules: comment out if not fitted --------
 #define USE_OLED 1          // SSD1306 128x64 at 0x3C
+#define USE_SD 1            // MicroSD logging in the dashboard's CSV import format
 // #define USE_DS18B20 1     // DS18B20 on one-wire pin TEMP_PIN
 // #define USE_WIFI_NTP 1    // NTP-synced ISO timestamps require WiFi creds
 
 #if USE_OLED
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#endif
+
+#if defined(USE_SD)
+#include <SPI.h>
+#include <SD.h>
 #endif
 
 #if defined(USE_DS18B20)
@@ -73,6 +82,12 @@ OneWire oneWire(PIN_ONEWIRE);
 DallasTemperature tempSensor(&oneWire);
 #endif
 
+#if defined(USE_SD)
+// VSPI: SCK=18, MISO=19, MOSI=23; CS chosen to avoid I2C/one-wire pins.
+constexpr int PIN_SD_CS = 5;
+const char* SD_LOG_PATH = "/punarva_log.csv";
+#endif
+
 // --------------------------- Sample timing ---------------------------
 constexpr uint32_t SAMPLE_INTERVAL_MS = 250;   // 4 Hz — matches the dashboard's expected cadence
 constexpr uint32_t SERIAL_BAUD = 115200;
@@ -97,6 +112,60 @@ bool oledOk = false;
 
 uint32_t lastSampleMs = 0;
 uint32_t sampleCount = 0;
+
+#if defined(USE_SD)
+bool sdReady = false;
+// One log id per boot so imported records stay distinguishable. The dashboard
+// importer accepts (and warns about) mixed test_id values — first value wins,
+// which is exactly the behaviour we want for a single boot session.
+String logTestId;
+
+static String makeLogTestId() {
+  char buf[28];
+  snprintf(buf, sizeof(buf), "PVR-DEV-%06X-%04X",
+           (unsigned)(ESP.getEfuseMac() & 0xFFFFFF),
+           (unsigned)(millis() & 0xFFFF));
+  return String(buf);
+}
+
+static void sdLogSetup() {
+  if (!SD.begin(PIN_SD_CS)) {
+    Serial.println(F("[punarva] MicroSD: not found — logging disabled"));
+    return;
+  }
+  sdReady = true;
+  logTestId = makeLogTestId();
+  const bool fresh = !SD.exists(SD_LOG_PATH);
+  File log = SD.open(SD_LOG_PATH, FILE_APPEND);
+  if (!log) {
+    Serial.println(F("[punarva] MicroSD: cannot open log file — logging disabled"));
+    sdReady = false;
+    return;
+  }
+  if (fresh) {
+    // Exact column layout the dashboard importer validates (docs/CSV_FORMAT.md).
+    log.println(F("test_id,t_offset_ms,voltage_v,current_a,temperature_c"));
+  }
+  log.close();
+  Serial.print(F("[punarva] MicroSD: logging to "));
+  Serial.println(SD_LOG_PATH);
+}
+
+static void sdLogSample(uint32_t tMs, float v, float i, float temp) {
+  if (!sdReady) return;
+  File log = SD.open(SD_LOG_PATH, FILE_APPEND);
+  if (!log) return;
+  log.print(logTestId); log.print(',');
+  log.print(tMs); log.print(',');
+  if (!isnan(v)) log.print(v, 4);          // empty cell = no valid measurement
+  log.print(',');
+  if (!isnan(i)) log.print(i, 4);
+  log.print(',');
+  if (!isnan(temp)) log.print(temp, 2);
+  log.println();
+  log.close();
+}
+#endif
 
 #if defined(USE_WIFI_NTP)
 // Fill in to get real ISO-8601 device timestamps; otherwise leave timestamp
@@ -240,6 +309,10 @@ void setup() {
   tempSensor.begin();
 #endif
 
+#if defined(USE_SD)
+  sdLogSetup();
+#endif
+
 #if defined(USE_WIFI_NTP)
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -265,6 +338,9 @@ void loop() {
   const float t = readTemperature();
 
   sendSample(v, i, t);
+#if defined(USE_SD)
+  sdLogSample(millis(), v, i, t);
+#endif
   sampleCount++;
   updateOled(v, i, t);
 }

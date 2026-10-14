@@ -3,6 +3,7 @@ import type { ConnectionStatus, DataSource, Reading, SystemEvent } from '@/types
 import { isStaleReading, validateReading } from '@/services/validation'
 import { WebSerialTransport, isWebSerialSupported, type DeviceTransport } from '@/services/device/transports'
 import { WebSocketTransport, isWebSocketSupported } from '@/services/device/webSocketTransport'
+import { useCalibrationStore, isIdentityCalibration, describeCalibration } from '@/state/calibrationStore'
 import { uid } from '@/lib/uid'
 
 const MAX_EVENTS = 60
@@ -129,6 +130,10 @@ export const useDeviceStore = create<DeviceState>()((set, get) => ({
       })
       set({ connection: 'connected', transportName: transport.name })
       get().pushEvent('info', `Connected via ${transport.name}. Waiting for valid measurement lines…`)
+      const cal = useCalibrationStore.getState().sensor
+      if (!isIdentityCalibration(cal)) {
+        get().pushEvent('warn', `Sensor calibration ACTIVE for incoming hardware readings: ${describeCalibration(cal)} (see Settings → Calibration).`)
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       set({ connection: 'error', connectionError: message, transportName: null })
@@ -153,10 +158,23 @@ export const useDeviceStore = create<DeviceState>()((set, get) => ({
     if (result.errors.length > 0) {
       get().pushEvent('warn', `Payload accepted with issues: ${result.errors[0]}`)
     }
+    // Apply user-entered sensor calibration (gain * raw + offset). Validation
+    // above runs on the RAW payload first, so nonsense is still rejected
+    // before any calibration arithmetic can reshape it into plausibility.
+    const cal = useCalibrationStore.getState().sensor
+    const rawValue = result.value
+    const calibrated: Reading = isIdentityCalibration(cal)
+      ? rawValue
+      : {
+          voltage_v: rawValue.voltage_v * cal.voltage_v.gain + cal.voltage_v.offset,
+          current_a: rawValue.current_a * cal.current_a.gain + cal.current_a.offset,
+          temperature_c: rawValue.temperature_c * cal.temperature_c.gain + cal.temperature_c.offset,
+          timestamp: rawValue.timestamp,
+        }
     set({
-      lastReading: result.value,
+      lastReading: calibrated,
       lastReadingSource: 'HARDWARE',
-      lastValidAt: result.value.timestamp,
+      lastValidAt: calibrated.timestamp,
     })
   },
 

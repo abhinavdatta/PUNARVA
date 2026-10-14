@@ -165,16 +165,16 @@ This is an **engineering prototype**, and the software is deliberate about what 
 | Stage | Item | Status |
 | --- | --- | --- |
 | 1 | Reference ESP32 acquisition firmware (protocol-complete C++) | 🟡 Provided in `firmware/` — awaiting hardware validation |
-| 1 | ESP32 + ADS1115 acquisition bring-up | 🟡 Under development |
+| 1 | ESP32 + ADS1115 acquisition bring-up | 🟡 Under development — needs physical hardware validation |
 | 1 | Browser flashing + C++ compile path | ✅ Implemented (Web Serial + arduino-cli bridge) |
 | 1 | WebSocket device bridge transport | ✅ Implemented (unverified against real bridge) |
-| 1 | Voltage-sensing circuit finalisation | 🟡 Under development |
-| 2 | Current / temperature sensors, OLED, MicroSD logging | ⚪ Planned |
-| 2 | Controlled-load stage (with protection) | ⚪ Planned |
-| 3 | Calibration & repeatable testing | 🟡 Calibration groundwork: reference-test comparison (observed deltas only) implemented |
+| 1 | Voltage-sensing circuit finalisation | 🟡 Under development — hardware design task |
+| 2 | Current / temperature sensors, OLED, MicroSD logging | 🟡 Firmware support shipped (ADS1115 channels, DS18B20 optional, SSD1306 optional, MicroSD CSV logging in dashboard-import format) — awaiting hardware validation |
+| 2 | Controlled-load stage (with protection) | ⚪ Planned — requires validated firmware, hardware protection, and electrical review; deliberately not exposed to software |
+| 3 | Calibration & repeatable testing | 🟡 Reference-test comparison + user-entered gain/offset sensor corrections (applied to hardware readings only, provenance noted in reports) |
 | 3 | Validated battery-health estimation | ⚪ Planned — deliberately not fabricated before validated data exists |
-| 4 | AI/ML analysis after sufficient real data | ⚪ Planned |
-| 4 | Second-life evaluation support | ⚪ Planned |
+| 4 | AI/ML analysis after sufficient real data | ⚪ Planned — needs real dataset first |
+| 4 | Second-life evaluation support | ⚪ Planned — depends on validated health estimation |
 
 ---
 
