@@ -1,0 +1,9 @@
+{
+  "additionalFiles": "",
+  "compiler.optimization_flags": "-Os",
+  "customBuildProperties": "",
+  "fqbn": "esp32:esp32:esp32",
+  "hardwareFolders": "/Users/jdprasad/Library/Arduino15/packages/esp32/hardware/esp32/3.3.12,/Users/jdprasad/Library/Arduino15/packages/esp32/hardware/esp32/3.3.12",
+  "otherLibrariesFolders": "/Users/jdprasad/Documents/Arduino/libraries",
+  "sketchLocation": "/Users/jdprasad/punarva/PUNARVA/firmware/punarva_tester"
+}

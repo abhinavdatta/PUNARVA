@@ -4,6 +4,7 @@ dist-ssr
 *.local
 *.log
 .DS_Store
+.wrangler
 
 # arduino-cli build artifacts (compile bridge)
 .arduino-build

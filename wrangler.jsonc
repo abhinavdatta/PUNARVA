@@ -1,0 +1,20 @@
+{
+  // PUNARVA on Cloudflare Workers — static-assets SPA hosting.
+  //
+  // `wrangler deploy` serves the built dashboard from ./dist with single-page
+  // application fallback (client-side routes like /battery-check and
+  // /results/<id> resolve to index.html), and hands only non-asset requests
+  // (the /__punarva/* tooling endpoints, unknown paths) to worker/index.ts.
+  //
+  // Deploy:  npm run deploy   (builds first)
+  // Local:   npm run cf:dev   (builds first, then serves on http://localhost:8787)
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "punarva",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-05-05",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  }
+}
