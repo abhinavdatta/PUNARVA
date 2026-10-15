@@ -4,7 +4,7 @@ import { fmtDateTime, fmtNum, fmtPct } from '@/lib/format'
 import { chemistryLabel } from '@/data/chemistry'
 import { exportSamplesCsv } from '@/services/csv/exportCsv'
 import { compareAgainstReference, referenceFromRecord } from '@/services/calibration'
-import { screenRecord, screeningDisclaimer } from '@/services/screening'
+import { screenRecord, screeningDisclaimer, SCREENING_RESULT_LABELS } from '@/services/screening'
 import { useCalibrationStore } from '@/state/calibrationStore'
 import { useDeviceStore } from '@/state/deviceStore'
 import { Badge, DataSourceBadge } from '@/components/ui/Badge'
@@ -169,13 +169,18 @@ export function ResultsReport({ record }: { record: TestRecord }) {
           <CardHeader
             title="Screening outcome"
             icon={<Recycle aria-hidden />}
-            subtitle="REUSE / INSPECT / RECYCLE ladder from the firmware experiment's decision rules"
             actions={
               <Badge
                 tone={screening.result === 'REUSE' ? 'teal' : screening.result === 'INSPECT' ? 'copper' : 'red'}
               >
                 {screening.result}
               </Badge>
+            }
+            subtitle={
+              <>
+                {SCREENING_RESULT_LABELS[screening.result]}{' '}
+                <span className="text-lavender/60">— REUSE / INSPECT / RECYCLE ladder from the firmware experiment's decision rules</span>
+              </>
             }
           />
           <CardBody className="space-y-3">

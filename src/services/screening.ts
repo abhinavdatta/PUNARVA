@@ -23,6 +23,13 @@ import type { TestRecord } from '@/types'
 
 export type ScreeningResult = 'REUSE' | 'INSPECT' | 'RECYCLE'
 
+/** Plain-language meaning of each verdict, shown next to the raw label. */
+export const SCREENING_RESULT_LABELS: Record<ScreeningResult, string> = {
+  REUSE: 'Can be reused',
+  INSPECT: 'Check before reusing',
+  RECYCLE: 'Cannot be used again — can be recycled',
+}
+
 export interface ScreeningOutcome {
   result: ScreeningResult
   /** Human-readable reasons, one line per rule that fired. */

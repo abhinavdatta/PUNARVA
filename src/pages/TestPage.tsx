@@ -5,7 +5,7 @@ import { useDeviceStore } from '@/state/deviceStore'
 import { useTestStore } from '@/state/testStore'
 import { useCalibrationStore, isIdentityCalibration, describeCalibration } from '@/state/calibrationStore'
 import { browserSupportSummary } from '@/services/device/transports'
-import { screenRecord } from '@/services/screening'
+import { screenRecord, SCREENING_RESULT_LABELS } from '@/services/screening'
 import { testEngine } from '@/state/testEngine'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -117,7 +117,7 @@ export function TestPage() {
             ? 'amber'
             : 'pass'),
         detail: screening
-          ? `${screening.result}: ${screening.reasons.join(' · ')}`
+          ? `${screening.result} — ${SCREENING_RESULT_LABELS[screening.result]}: ${screening.reasons.join(' · ')}`
           : 'No screening has been applied',
       },
     ],
