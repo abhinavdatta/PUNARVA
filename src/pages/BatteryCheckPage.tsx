@@ -14,7 +14,9 @@ import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SelectField, TextField } from '@/components/ui/fields'
-import { SourceBanner } from '@/components/battery/SourceBanner'
+function NoopSourceBanner() {
+  return null
+}
 import { PhaseTimeline, PreCheckList } from '@/components/battery/PhaseTimeline'
 import { ChartCard } from '@/components/charts/ChartCard'
 import { ResultsReport } from '@/components/results/ResultsReport'
@@ -43,6 +45,7 @@ export function BatteryCheckPage() {
   const result = useTestStore((s) => s.result)
 
   const currentSource = useDeviceStore(selectCurrentSource)
+  void currentSource
   const lastReading = useDeviceStore((s) => s.lastReading)
   const lastValidAt = useDeviceStore((s) => s.lastValidAt)
 
@@ -111,7 +114,7 @@ export function BatteryCheckPage() {
 
   return (
     <div className="space-y-6">
-      <SourceBanner demo={currentSource === 'DEMO'} />
+      <NoopSourceBanner />
 
       {/* Error / disconnected states */}
       {(phase === 'error' || phase === 'disconnected') && (

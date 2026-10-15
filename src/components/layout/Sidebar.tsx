@@ -5,6 +5,8 @@ import {
   History,
   Info,
   LayoutDashboard,
+  Microscope,
+  Plug,
   Settings,
   Zap,
 } from 'lucide-react'
@@ -15,10 +17,12 @@ export const NAV_ITEMS = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/battery-check', label: 'Battery Check', icon: Activity },
   { to: '/flash', label: 'Flash Firmware', icon: Zap },
+  { to: '/test', label: 'Component Test', icon: Microscope },
   { to: '/history', label: 'Test History', icon: History },
   { to: '/technology', label: 'Technology', icon: Cpu },
   { to: '/about', label: 'Project Information', icon: Info },
   { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/components', label: 'Components', icon: Plug },
 ] as const
 
 export function NavList({ onNavigate }: { onNavigate?: () => void }) {

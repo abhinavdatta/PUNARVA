@@ -9,6 +9,8 @@ import { TechnologyPage } from '@/pages/TechnologyPage'
 import { AboutPage } from '@/pages/AboutPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { FlashPage } from '@/pages/FlashPage'
+import { TestPage } from '@/pages/TestPage'
+import { ComponentPage } from '@/pages/ComponentPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { testEngine } from '@/state/testEngine'
 import { useDeviceStore } from '@/state/deviceStore'
@@ -47,6 +49,8 @@ export default function App() {
           <Route path="/about" element={<AboutPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/flash" element={<FlashPage />} />
+          <Route path="/test" element={<TestPage />} />
+          <Route path="/components" element={<ComponentPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AppShell>
