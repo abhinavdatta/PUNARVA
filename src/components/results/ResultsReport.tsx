@@ -1,9 +1,10 @@
-import { Download, FileWarning, Info, ShieldAlert, Star, StarOff } from 'lucide-react'
+import { Download, FileWarning, Info, Recycle, ShieldAlert, Star, StarOff } from 'lucide-react'
 import type { StatSummary, TestRecord } from '@/types'
 import { fmtDateTime, fmtNum, fmtPct } from '@/lib/format'
 import { chemistryLabel } from '@/data/chemistry'
 import { exportSamplesCsv } from '@/services/csv/exportCsv'
 import { compareAgainstReference, referenceFromRecord } from '@/services/calibration'
+import { screenRecord, screeningDisclaimer } from '@/services/screening'
 import { useCalibrationStore } from '@/state/calibrationStore'
 import { useDeviceStore } from '@/state/deviceStore'
 import { Badge, DataSourceBadge } from '@/components/ui/Badge'
@@ -55,6 +56,7 @@ export function ResultsReport({ record }: { record: TestRecord }) {
   const pushEvent = useDeviceStore((s) => s.pushEvent)
   const isReference = reference?.recordId === record.id
   const comparison = compareAgainstReference(record, reference)
+  const screening = screenRecord(record)
 
   const sourceNote =
     record.source === 'DEMO'
@@ -160,6 +162,48 @@ export function ResultsReport({ record }: { record: TestRecord }) {
           </p>
         </div>
       </div>
+
+      {/* Screening outcome — firmware decision rules, labelled by data source */}
+      {screening && (
+        <Card>
+          <CardHeader
+            title="Screening outcome"
+            icon={<Recycle aria-hidden />}
+            subtitle="REUSE / INSPECT / RECYCLE ladder from the firmware experiment's decision rules"
+            actions={
+              <Badge
+                tone={screening.result === 'REUSE' ? 'teal' : screening.result === 'INSPECT' ? 'copper' : 'red'}
+              >
+                {screening.result}
+              </Badge>
+            }
+          />
+          <CardBody className="space-y-3">
+            <p className="text-xs leading-relaxed text-lavender/80">{screeningDisclaimer(record.source)}</p>
+            {screening.reasons.length > 0 ? (
+              <ul className="space-y-2">
+                {screening.reasons.map((r, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-lavender">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
+                    {r}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-lavender">
+                No screening gate fired — voltage stayed above the cutoff floor, temperature stayed within limits,
+                and implied impedance stayed below the inspect threshold.
+              </p>
+            )}
+            {screening.incomplete && (
+              <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3.5 py-2.5 text-xs leading-relaxed text-amber-400">
+                Peak load current was below 0.05 A, so the impedance step of the ladder could not run — outcome is
+                based on the voltage and temperature gates only.
+              </p>
+            )}
+          </CardBody>
+        </Card>
+      )}
 
       {/* Statistics */}
       <Card>

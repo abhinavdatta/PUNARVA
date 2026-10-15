@@ -1,21 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Bell, Cable, CircleSlash, Menu, RadioTower, X } from 'lucide-react'
+import { Bell, CircleSlash, Menu, X } from 'lucide-react'
 import { useDeviceStore, selectCurrentSource } from '@/state/deviceStore'
 import { fmtTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { StatusDot, type DotTone } from '@/components/ui/StatusDot'
+import { StatusDot } from '@/components/ui/StatusDot'
 import { BrandMark } from './BrandMark'
 import { NavList } from './Sidebar'
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Overview',
   '/battery-check': 'Battery Check',
-  '/flash': 'Flash Firmware',
   '/history': 'Test History',
   '/technology': 'Technology',
   '/about': 'Project Information',
   '/settings': 'Settings',
+}
+
+const TOPBAR_HIDE_SOURCE_PATHS = ['/components', '/test', '/technology', '/about']
+
+function topbarShowsSource(pathname: string): boolean {
+  return !TOPBAR_HIDE_SOURCE_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(p + '/')
+  )
 }
 
 function pageTitle(pathname: string): string {
@@ -24,16 +31,9 @@ function pageTitle(pathname: string): string {
   return 'PUNARVA'
 }
 
-const CONNECTION_META: Record<string, { tone: DotTone; label: string; pulse: boolean }> = {
-  disconnected: { tone: 'grey', label: 'Device disconnected', pulse: false },
-  connecting: { tone: 'amber', label: 'Connecting…', pulse: true },
-  connected: { tone: 'teal', label: 'Device connected', pulse: false },
-  error: { tone: 'red', label: 'Connection error', pulse: false },
-}
 
 export function Topbar() {
   const { pathname } = useLocation()
-  const connection = useDeviceStore((s) => s.connection)
   const source = useDeviceStore(selectCurrentSource)
   const lastValidAt = useDeviceStore((s) => s.lastValidAt)
   const lastReadingSource = useDeviceStore((s) => s.lastReadingSource)
@@ -60,7 +60,6 @@ export function Topbar() {
     return () => window.removeEventListener('mousedown', onDown)
   }, [bellOpen])
 
-  const conn = CONNECTION_META[connection]
   const warnCount = events.filter((e) => e.level !== 'info').length
 
   return (
@@ -90,44 +89,32 @@ export function Topbar() {
 
           {/* Status cluster */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <Link
-              to="/settings"
-              className="hidden items-center gap-2 rounded-lg border border-plum-600/60 bg-plum-800/60 px-3 py-1.5 text-xs font-medium text-lavender transition-colors hover:border-plum-500 hover:text-ivory md:inline-flex"
-              title="Device connection — open Settings"
-            >
-              <StatusDot tone={conn.tone} pulse={conn.pulse} />
-              <span className="flex items-center gap-1.5">
-                <Cable className="h-3.5 w-3.5" aria-hidden />
-                {conn.label}
-              </span>
-            </Link>
-
-            <span
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider',
-                source === 'HARDWARE'
-                  ? 'border-sea-400/40 bg-sea-400/10 text-sea-300'
-                  : 'border-amber-400/40 bg-amber-400/10 text-amber-400',
-              )}
-              title={source === 'HARDWARE' ? 'Receiving from connected hardware' : 'No device connected — data shown is demo/simulated'}
-            >
-              {source === 'HARDWARE' ? (
-                <RadioTower className="h-3.5 w-3.5" aria-hidden />
-              ) : (
+            {topbarShowsSource(pathname) && (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider',
+                  source === 'HARDWARE'
+                    ? 'border-sea-400/40 bg-sea-400/10 text-sea-300'
+                    : 'border-amber-400/40 bg-amber-400/10 text-amber-400',
+                )}
+              title={source === 'HARDWARE' ? 'Receiving from connected hardware' : 'Demo mode'}
+              >
                 <CircleSlash className="h-3.5 w-3.5" aria-hidden />
-              )}
-              {source === 'HARDWARE' ? 'Hardware' : 'Demo data'}
-            </span>
+                Demo data
+              </span>
+            )}
 
-            <span className="hidden items-center gap-1.5 text-xs text-lavender xl:inline-flex" title="Last valid measurement received">
-              <span className="text-lavender/60">Last valid:</span>
-              <span className="numeric text-ivory">{lastValidAt ? fmtTime(lastValidAt) : '—'}</span>
-              {lastValidAt && lastReadingSource && (
-                <span className={cn('text-[10px] font-semibold uppercase', lastReadingSource === 'DEMO' ? 'text-amber-400' : 'text-sea-300')}>
-                  {lastReadingSource}
-                </span>
-              )}
-            </span>
+            {topbarShowsSource(pathname) && (
+              <span className="hidden items-center gap-1.5 text-xs text-lavender xl:inline-flex" title="Last valid measurement received">
+                <span className="text-lavender/60">Last valid:</span>
+                <span className="numeric text-ivory">{lastValidAt ? fmtTime(lastValidAt) : '—'}</span>
+                {lastValidAt && lastReadingSource && (
+                  <span className={cn('text-[10px] font-semibold uppercase', lastReadingSource === 'DEMO' ? 'text-amber-400' : 'text-sea-300')}>
+                    {lastReadingSource}
+                  </span>
+                )}
+              </span>
+            )}
 
             {/* Notifications */}
             <div className="relative" ref={bellRef}>

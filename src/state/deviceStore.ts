@@ -10,6 +10,25 @@ const MAX_EVENTS = 60
 
 export type DeviceTransportKind = 'web-serial' | 'websocket'
 
+export interface ConnectedDevice {
+  /** Unique-ish id for this connection session (port/socket identity). */
+  id: string
+  /** Transport-layer name, e.g. "Web Serial (USB)" or "WebSocket (localhost:8765)". */
+  transportName: string
+  /** Kind: web-serial or websocket. */
+  kind: DeviceTransportKind
+  /** When this device's stream was first detected as live. */
+  connectedAt: string | null
+  /** Last validated reading timestamp from this device, if any. */
+  lastValidAt: string | null
+  /** Most recent validated reading, if any. */
+  lastReading: import('@/types').Reading | null
+  /** Rejected payloads seen on this connection. */
+  invalidCount: number
+  /** Implementation-defined info reported by the device/firmware (serial, firmware id, etc.). */
+  info: string | null
+}
+
 interface DeviceState {
   connection: ConnectionStatus
   connectionError: string | null
@@ -18,6 +37,7 @@ interface DeviceState {
   websocketSupported: boolean
   transportKind: DeviceTransportKind
   websocketUrl: string
+  devices: ConnectedDevice[]
   lastReading: Reading | null
   lastReadingSource: Extract<DataSource, 'DEMO' | 'HARDWARE'> | null
   lastValidAt: string | null
@@ -29,6 +49,10 @@ interface DeviceState {
   markEventsSeen: () => void
   setTransportKind: (kind: DeviceTransportKind) => void
   setWebsocketUrl: (url: string) => void
+  registerDevice: (device: ConnectedDevice) => void
+  updateDeviceReading: (deviceId: string, reading: import('@/types').Reading, timestamp: string) => void
+  updateDeviceInfo: (deviceId: string, info: string | null) => void
+  removeDevice: (deviceId: string) => void
   connectDevice: () => Promise<void>
   disconnectSerial: () => Promise<void>
   /** Record a validated demo reading (demo test live values). Always labelled DEMO. */
@@ -66,6 +90,7 @@ export const useDeviceStore = create<DeviceState>()((set, get) => ({
   invalidCount: 0,
   events: [],
   eventUnseen: 0,
+  devices: [],
 
   pushEvent: (level, message) =>
     set((s) => ({
@@ -81,6 +106,43 @@ export const useDeviceStore = create<DeviceState>()((set, get) => ({
   },
 
   setWebsocketUrl: (url) => set({ websocketUrl: url }),
+
+  registerDevice: (device: ConnectedDevice) =>
+    set((s) => ({
+      devices: s.devices.some((d) => d.id === device.id)
+        ? s.devices.map((d) => (d.id === device.id ? device : d))
+        : [...s.devices, device],
+    })),
+
+  updateDeviceReading: (deviceId, reading, timestamp) =>
+    set((s) => ({
+      devices: s.devices.map((d) =>
+        d.id === deviceId ? { ...d, lastReading: reading, lastValidAt: timestamp, connectedAt: d.connectedAt ?? timestamp } : d
+      ),
+      lastReading: reading,
+      lastReadingSource: 'HARDWARE',
+      lastValidAt: timestamp,
+    })),
+
+  updateDeviceInfo: (deviceId, info) =>
+    set((s) => ({
+      devices: s.devices.map((d) => (d.id === deviceId ? { ...d, info } : d)),
+    })),
+
+  removeDevice: (deviceId) =>
+    set((s) => {
+      const remaining = s.devices.filter((d) => d.id !== deviceId)
+      const next = remaining[0]
+      return {
+        devices: remaining,
+        connection: next ? (s.connection === 'connected' ? 'connected' : s.connection) : 'disconnected',
+        transportName: next?.transportName ?? null,
+        lastReading: next?.lastReading ?? null,
+        lastReadingSource: next ? (next.lastReading ? 'HARDWARE' : s.lastReadingSource) : null,
+        lastValidAt: next?.lastValidAt ?? null,
+        invalidCount: remaining.reduce((a, d) => a + d.invalidCount, 0),
+      }
+    }),
 
   connectDevice: async () => {
     if (get().connection === 'connecting' || get().connection === 'connected') return
@@ -124,12 +186,27 @@ export const useDeviceStore = create<DeviceState>()((set, get) => ({
           get().pushEvent('error', message)
         },
         onClose: (reason) => {
+          const activeDevice = get().devices[0]
+          if (activeDevice) get().removeDevice(activeDevice.id)
           set({ connection: 'disconnected', transportName: null })
           get().pushEvent('warn', `Device disconnected${reason ? ` — ${reason}` : ''}.`)
         },
       })
+      const deviceId = transport instanceof WebSerialTransport
+        ? `ws-serial-${uid()}`
+        : `ws-${new URL(get().websocketUrl).hostname}`
+      get().registerDevice({
+        id: deviceId,
+        transportName: transport.name,
+        kind: kind,
+        connectedAt: null,
+        lastValidAt: null,
+        lastReading: null,
+        invalidCount: 0,
+        info: null,
+      })
       set({ connection: 'connected', transportName: transport.name })
-      get().pushEvent('info', `Connected via ${transport.name}. Waiting for valid measurement lines…`)
+      get().pushEvent('info', `Connected via ${transport.name}. Device registered: ${deviceId}`)
       const cal = useCalibrationStore.getState().sensor
       if (!isIdentityCalibration(cal)) {
         get().pushEvent('warn', `Sensor calibration ACTIVE for incoming hardware readings: ${describeCalibration(cal)} (see Settings → Calibration).`)
@@ -171,11 +248,17 @@ export const useDeviceStore = create<DeviceState>()((set, get) => ({
           temperature_c: rawValue.temperature_c * cal.temperature_c.gain + cal.temperature_c.offset,
           timestamp: rawValue.timestamp,
         }
-    set({
-      lastReading: calibrated,
-      lastReadingSource: 'HARDWARE',
-      lastValidAt: calibrated.timestamp,
-    })
+    // Route to the active device if any; fall back to global state.
+    const activeDevice = get().devices[0]
+    if (activeDevice) {
+      get().updateDeviceReading(activeDevice.id, calibrated, calibrated.timestamp)
+    } else {
+      set({
+        lastReading: calibrated,
+        lastReadingSource: 'HARDWARE',
+        lastValidAt: calibrated.timestamp,
+      })
+    }
   },
 
   noteDemoReading: (values) => {
